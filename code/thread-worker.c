@@ -1,8 +1,8 @@
 // File:	thread-worker.c
 
 // List all group member's name:
-// username of iLab:
-// iLab Server:
+// username of iLab: ac1771, tsc95
+// iLab Server: cs416f23-40
 
 #include "thread-worker.h"
 
@@ -11,23 +11,36 @@
 long tot_cntx_switches=0;
 double avg_turn_time=0;
 double avg_resp_time=0;
+uint first_run = 1;
 
 
 // INITAILIZE ALL YOUR OTHER VARIABLES HERE
 // YOUR CODE HERE
-
+    
 
 /* create a new thread */
-int worker_create(worker_t * thread, pthread_attr_t * attr, 
-                      void *(*function)(void*), void * arg) {
+int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(void*), void * arg) {
 
-       // - create Thread Control Block (TCB)
-       // - create and initialize the context of this worker thread
-       // - allocate space of stack for this thread to run
-       // after everything is set, push this thread into run queue and 
-       // - make it ready for the execution.
+	// - create Thread Control Block (TCB)
+	struct TCB * myTCB = (struct TCB *) malloc(sizeof(struct TCB));
 
-       // YOUR CODE HERE
+	// - allocate space of stack for this thread to run
+	myTCB->stack = malloc(STACK_SIZE);
+	
+	// - create and initialize the context of this worker thread
+	myTCB->cctx.uc_link=NULL;
+	myTCB->cctx.uc_stack.ss_sp=myTCB->stack;
+	myTCB->cctx.uc_stack.ss_size=STACK_SIZE;
+	myTCB->cctx.uc_stack.ss_flags=0;
+	makecontext(&myTCB->cctx,(void *)&function,0);
+
+	// after everything is set, push this thread into run queue and 
+	if (first_run == 1) {
+		// LOGIC TO SETUP THE SCHEDULER QUEUE HERE
+		first_run = 0;
+	}
+
+	// - make it ready for the execution.
 	
     return 0;
 };

@@ -1,8 +1,8 @@
 // File:	worker_t.h
 
 // List all group member's name:
-// username of iLab:
-// iLab Server:
+// username of iLab: ac1771, tsc95
+// iLab Server: cs416f23-40
 
 #ifndef WORKER_T_H
 #define WORKER_T_H
@@ -18,16 +18,20 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ucontext.h>
+#include <signal.h>
+
+#define STACK_SIZE SIGSTKSZ
 
 typedef uint worker_t;
 
 typedef struct TCB {
 	/* add important states in a thread control block */
-	// thread Id
-	// thread status
-	// thread context
-	// thread stack
-	// thread priority
+	uint thread_id; // thread Id
+	uint thread_status; // whether tcb is busy or not
+	ucontext_t cctx; // thread context
+	void *stack; // thread stack
+	uint thread_p; // thread priority
 	// And more ...
 
 	// YOUR CODE HERE
