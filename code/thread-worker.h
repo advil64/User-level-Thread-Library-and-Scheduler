@@ -33,8 +33,6 @@ typedef struct TCB {
 	void *stack; // thread stack
 	uint thread_p; // thread priority
 	// And more ...
-
-	// YOUR CODE HERE
 } tcb; 
 
 /* mutex struct definition */

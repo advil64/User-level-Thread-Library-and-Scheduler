@@ -15,8 +15,59 @@ uint first_run = 1;
 
 
 // INITAILIZE ALL YOUR OTHER VARIABLES HERE
-// YOUR CODE HERE
-    
+
+// Here the scheduler context is set, it gets swapped to
+// when a thread is interrupted/finished running
+ucontext_t sched_cctx;
+void * sched_stack;
+
+// This variable contains a pointer to the currently running TCB
+// as set by the scheduler
+struct TCB * running_thread;
+
+
+/* scheduler */
+static void schedule() {
+	puts("Scheduler started");
+	// - every time a timer interrupt occurs, your worker thread library 
+	// should be contexted switched from a thread context to this 
+	// schedule() function
+
+	// - invoke scheduling algorithms according to the policy (PSJF or MLFQ)
+
+	// if (sched == PSJF)
+	//		sched_psjf();
+	// else if (sched == MLFQ)
+	// 		sched_mlfq();
+
+	// YOUR CODE HERE
+
+// - schedule policy
+// #ifndef MLFQ
+// 	// Choose PSJF
+// #else 
+// 	// Choose MLFQ
+// #endif
+
+}
+
+/* Pre-emptive Shortest Job First (POLICY_PSJF) scheduling algorithm */
+static void sched_psjf() {
+	// - your own implementation of PSJF
+	// (feel free to modify arguments and return types)
+
+	// YOUR CODE HERE
+}
+
+
+/* Preemptive MLFQ scheduling algorithm */
+static void sched_mlfq() {
+	// - your own implementation of MLFQ
+	// (feel free to modify arguments and return types)
+
+	// YOUR CODE HERE
+}
+
 
 /* create a new thread */
 int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(void*), void * arg) {
@@ -35,12 +86,23 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 	makecontext(&myTCB->cctx,(void *)&function,0);
 
 	// after everything is set, push this thread into run queue and 
-	if (first_run == 1) {
+	if (first_run) {
+		// Set up the scheduler context
+		sched_stack=malloc(STACK_SIZE);
+		sched_cctx.uc_link=NULL;
+		sched_cctx.uc_stack.ss_sp=sched_stack;
+		sched_cctx.uc_stack.ss_size=STACK_SIZE;
+		sched_cctx.uc_stack.ss_flags=0;
+
+		makecontext(&sched_cctx,(void *)&schedule,0);
+		setcontext(&sched_cctx);
+		
 		// LOGIC TO SETUP THE SCHEDULER QUEUE HERE
 		first_run = 0;
 	}
 
 	// - make it ready for the execution.
+	myTCB->thread_status = 0;
 	
     return 0;
 };
@@ -49,6 +111,7 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 int worker_yield() {
 	
 	// - change worker thread's state from Running to Ready
+	running_thread->thread_status = 0;
 	// - save context of this thread to its thread control block
 	// - switch from thread context to scheduler context
 
@@ -113,47 +176,6 @@ int worker_mutex_destroy(worker_mutex_t *mutex) {
 
 	return 0;
 };
-
-/* scheduler */
-static void schedule() {
-	// - every time a timer interrupt occurs, your worker thread library 
-	// should be contexted switched from a thread context to this 
-	// schedule() function
-
-	// - invoke scheduling algorithms according to the policy (PSJF or MLFQ)
-
-	// if (sched == PSJF)
-	//		sched_psjf();
-	// else if (sched == MLFQ)
-	// 		sched_mlfq();
-
-	// YOUR CODE HERE
-
-// - schedule policy
-#ifndef MLFQ
-	// Choose PSJF
-#else 
-	// Choose MLFQ
-#endif
-
-}
-
-/* Pre-emptive Shortest Job First (POLICY_PSJF) scheduling algorithm */
-static void sched_psjf() {
-	// - your own implementation of PSJF
-	// (feel free to modify arguments and return types)
-
-	// YOUR CODE HERE
-}
-
-
-/* Preemptive MLFQ scheduling algorithm */
-static void sched_mlfq() {
-	// - your own implementation of MLFQ
-	// (feel free to modify arguments and return types)
-
-	// YOUR CODE HERE
-}
 
 //DO NOT MODIFY THIS FUNCTION
 /* Function to print global statistics. Do not modify this function.*/
