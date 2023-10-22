@@ -17,7 +17,7 @@ void* thread_function(void* arg) {
     printf("Thread is running\n");
     // worker_yield(); // Yield to other threads
     // printf("Thread is running again\n");
-    return NULL;
+    pthread_exit(NULL);
 }
 
 int main(int argc, char **argv) {

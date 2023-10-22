@@ -19,13 +19,17 @@ uint first_run = 1;
 struct QueueNode {
     struct TCB * myTCB;
     struct QueueNode* next;
-	struct QueueNode* prev;
+};
+
+struct FinishedNode {
+	worker_t thread_id;
+	struct QueueNode* next;
 };
 
 struct Queue {
     struct QueueNode* front;
     struct QueueNode* rear;
-	struct QueueNode * finished_threads;
+	struct FinishedNode * finished_threads;
 	struct QueueNode * running_thread;
 };
 
@@ -37,17 +41,91 @@ int isEmpty() {
 }
 
 // Function to add an element to the rear of the queue
-void enqueue(QueueNode newNode) {
+void enqueue(struct QueueNode* newNode) {
     if (!newNode) {
         perror("Memory allocation failed");
         exit(1);
     }
     
-    if (isEmpty(queue)) {
-        queue->front = queue->rear = newNode;
+    if (isEmpty(myQueue)) {
+        myQueue->front = myQueue->rear = newNode;
     } else {
-        queue->rear->next = newNode;
-        queue->rear = newNode;
+        myQueue->rear->next = newNode;
+        myQueue->rear = newNode;
+		newNode->next = NULL;
+    }
+
+	puts("Node enqueued");
+}
+
+// Function to add an element to the rear of the queue
+void enqueue_finished(struct FinishedNode* newNode) {    
+    if (myQueue->finished_threads == NULL) {
+        myQueue->finished_threads = newNode;
+    } else {
+		newNode->next = myQueue->finished_threads;
+        myQueue->finished_threads = newNode;
+    }
+
+	puts("Finished node enqueued");
+}
+
+// Function to remove an element from the front of the queue
+struct QueueNode* dequeue() {
+    if (isEmpty(myQueue)) {
+        printf("Queue is empty\n");
+        exit(1);
+    }
+    
+    struct QueueNode* temp = myQueue->front;
+    myQueue->front = myQueue->front->next;
+	puts("Node dequeued");
+    return temp;
+}
+
+struct FinishedNode* find_finished_node_by_thread_id(worker_t target_thread_id) {
+    struct FinishedNode* current = myQueue->finished_threads;
+
+    while (current != NULL) {
+        if (current->thread_id == target_thread_id) {
+            return current; // Found the node with the target thread ID
+        }
+        current = current->next;
+    }
+
+    return NULL; // Target thread ID not found in the queue
+};
+
+// Function to remove a specific node from the queue
+void remove_node(struct QueueNode* targetNode) {
+    if (myQueue == NULL || isEmpty(myQueue) || targetNode == NULL) {
+        return; // Invalid input or target node not found
+    }
+
+    // If the target node is the front of the queue
+    if (myQueue->front == targetNode) {
+        myQueue->front = targetNode->next;
+        if (myQueue->front == NULL) {
+            // If the removed node was the last node, update rear
+            myQueue->rear = NULL;
+        }
+        return;
+    }
+
+    // If the target node is not the front
+    struct QueueNode* current = myQueue->front;
+    while (current != NULL && current->next != targetNode) {
+        current = current->next;
+    }
+
+    if (current == NULL) {
+        return; // Target node not found in the queue
+    }
+
+    current->next = targetNode->next;
+    if (current->next == NULL) {
+        // If the removed node was the rear, update rear
+        myQueue->rear = current;
     }
 }
 
@@ -56,7 +134,7 @@ void enqueue(QueueNode newNode) {
 // Here the scheduler context is set, it gets swapped to when a thread is interrupted/finished running
 ucontext_t sched_cctx;
 
-/* scheduler */
+/*SCHEDULER FUNCTIONS START HERE*/
 static void schedule() {
 	puts("Scheduler started");
 	// - every time a timer interrupt occurs, your worker thread library 
@@ -72,12 +150,12 @@ static void schedule() {
 
 	// YOUR CODE HERE
 
-// - schedule policy
-// #ifndef MLFQ
-// 	// Choose PSJF
-// #else 
-// 	// Choose MLFQ
-// #endif
+	// - schedule policy
+	// #ifndef MLFQ
+	// 	// Choose PSJF
+	// #else 
+	// 	// Choose MLFQ
+	// #endif
 
 }
 
@@ -97,6 +175,8 @@ static void sched_mlfq() {
 
 	// YOUR CODE HERE
 }
+
+/*SCHEDULER FUNCTIONS END HERE*/
 
 
 /* create a new thread */
@@ -124,20 +204,18 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 
 	// - make it ready for the execution.
 	myTCB->thread_status = 0;
-	myTCB->thread_complete = 0;
 
 	struct QueueNode* qn = (struct QueueNode *)malloc(sizeof(struct QueueNode));
-	qn->tcb = myTCB;
+	qn->myTCB = myTCB;
 	qn->next = NULL;
-	qn->prev = NULL;
 
 	// after everything is set, push this thread into run queue and 
 	if (first_run) {
 
 		// allocate space for the queue and the queue node
 		myQueue = (struct Queue *)malloc(sizeof(struct Queue));
-		
-		
+		enqueue(qn);
+
 		// Set up the context and raise an error if needed
 		if (getcontext(&sched_cctx) < 0){
 			perror("getcontext");
@@ -155,8 +233,10 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 		// LOGIC TO SETUP THE SCHEDULER QUEUE HERE and add the thread from before
 		first_run = 0;
 
-		// TODO Run the scheduler here... try not to get a seg fault?
+		// TODO Run the scheduler here
 		setcontext(&sched_cctx);
+	} else{
+		enqueue(qn);
 	}
 	
     return 0;
@@ -166,7 +246,7 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 int worker_yield() {
 	
 	// - change worker thread's state from Running to Ready
-	running_thread->myTCB->thread_status = 0;
+	// myQueue->running_thread->myTCB->thread_status = 0;
 	// - save context of this thread to its thread control block
 	// - switch from thread context to scheduler context
 
@@ -178,21 +258,21 @@ int worker_yield() {
 /* terminate a thread */
 void worker_exit(void *value_ptr) {
 	// - de-allocate any dynamic memory created when starting this thread
+	struct QueueNode* temp = myQueue->running_thread;
+	worker_t thread_id = temp->myTCB->thread_id;
 
-	// YOUR CODE HERE
-};
+	// modify the queue to ignore temp
+	remove_node(temp);
 
-struct QueueNode* find_node_by_thread_id(worker_t target_thread_id) {
-    struct QueueNode* current = finished_threads;
+	// free all of temp's allocated memory
+	free(temp->myTCB->stack);
+	free(temp->myTCB);
+	free(temp);
 
-    while (current != NULL) {
-        if (current->myTCB->thread_id == target_thread_id) {
-            return current; // Found the node with the target thread ID
-        }
-        current = current->next;
-    }
-
-    return NULL; // Target thread ID not found in the queue
+	// create a new finished node and enqueue
+	struct FinishedNode* finished_node = (struct FinishedNode*)malloc(sizeof(struct FinishedNode));
+	finished_node->thread_id = thread_id;
+	enqueue_finished(finished_node);
 };
 
 
@@ -200,7 +280,7 @@ struct QueueNode* find_node_by_thread_id(worker_t target_thread_id) {
 int worker_join(worker_t thread, void **value_ptr) {
 
 	// retrieve the chosen thread based on its ID
-	struct QueueNode* target_node = find_node_by_thread_id(thread);
+	struct QueueNode* target_node = find_finished_node_by_thread_id(thread);
 	
 	if (target_node == NULL){
 		// - wait for a specific thread to terminate

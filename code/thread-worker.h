@@ -29,7 +29,6 @@ typedef struct TCB {
 	/* add important states in a thread control block */
 	uint thread_id; // thread Id
 	uint thread_status; // whether tcb is busy or not
-	uint thread_complete; // whether or not the thread has finished its execution
 	ucontext_t cctx; // thread context
 	void *stack; // thread stack
 	uint thread_p; // thread priority
