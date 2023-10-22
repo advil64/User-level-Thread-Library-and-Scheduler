@@ -26,7 +26,8 @@ int main(int argc, char **argv) {
     // worker_init();
 
     // Create multiple worker threads
-    worker_t thread1, thread2;
+    worker_t thread1 = 1;
+    worker_t thread2 = 2;
     worker_create(&thread1, NULL, thread_function, NULL);
     worker_create(&thread2, NULL, thread_function, NULL);
 
@@ -39,6 +40,4 @@ int main(int argc, char **argv) {
     // print_app_stats();
 
     return 0;
-
-	return 0;
 }

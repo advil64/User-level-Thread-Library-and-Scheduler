@@ -20,4 +20,4 @@ else
 endif
 
 clean:
-	rm -rf testfile *.o *.a
+	rm -rf test testfile *.o *.a

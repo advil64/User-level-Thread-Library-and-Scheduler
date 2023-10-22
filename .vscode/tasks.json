@@ -7,9 +7,12 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
-                "${file}",
                 "-o",
-                "${fileDirname}/${fileBasenameNoExtension}"
+                "test",
+                "test.c",
+                "thread-worker.c",
+                "-lm",
+                "-pthread"
             ],
             "options": {
                 "cwd": "${fileDirname}"
