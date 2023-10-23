@@ -23,7 +23,7 @@ struct QueueNode {
 
 struct FinishedNode {
 	worker_t thread_id;
-	struct QueueNode* next;
+	struct FinishedNode* next;
 };
 
 struct Queue {
@@ -133,10 +133,19 @@ void remove_node(struct QueueNode* targetNode) {
 
 // Here the scheduler context is set, it gets swapped to when a thread is interrupted/finished running
 ucontext_t sched_cctx;
+// And here's one for the main context!
+struct QueueNode* main_thread;
 
 /*SCHEDULER FUNCTIONS START HERE*/
 static void schedule() {
-	puts("Scheduler started");
+	while(!isEmpty(myQueue)){
+		puts("Scheduler started");
+		struct QueueNode* curr = myQueue->running_thread = myQueue->front;
+		setcontext(&curr->myTCB->cctx);
+	}
+
+	// Set up the context and raise an error if needed
+	// puts(setcontext(&curr->myTCB->cctx));
 	// - every time a timer interrupt occurs, your worker thread library 
 	// should be contexted switched from a thread context to this 
 	// schedule() function
@@ -156,7 +165,6 @@ static void schedule() {
 	// #else 
 	// 	// Choose MLFQ
 	// #endif
-
 }
 
 /* Pre-emptive Shortest Job First (POLICY_PSJF) scheduling algorithm */
@@ -186,21 +194,24 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 	struct TCB * myTCB = (struct TCB *) malloc(sizeof(struct TCB));
 	myTCB->thread_id = *thread;
 
-	// Set up the context and raise an error if needed
-	if (getcontext(&sched_cctx) < 0){
-		perror("getcontext");
-		exit(1);
-	}
-
 	// - allocate space of stack for this thread to run
 	myTCB->stack = malloc(STACK_SIZE);
+	if (myTCB->stack == NULL){
+		perror("Failed to allocate stack");
+		exit(1);
+	}
 	
 	// - create and initialize the context of this worker thread
 	myTCB->cctx.uc_link=NULL;
 	myTCB->cctx.uc_stack.ss_sp=myTCB->stack;
 	myTCB->cctx.uc_stack.ss_size=STACK_SIZE;
 	myTCB->cctx.uc_stack.ss_flags=0;
-	makecontext(&myTCB->cctx,(void *)&function,0);
+
+	if (getcontext(&myTCB->cctx) < 0){
+		perror("getcontext");
+		exit(1);
+	}
+	makecontext(&myTCB->cctx,(void*)function,0);
 
 	// - make it ready for the execution.
 	myTCB->thread_status = 0;
@@ -211,35 +222,50 @@ int worker_create(worker_t * thread, pthread_attr_t * attr, void *(*function)(vo
 
 	// after everything is set, push this thread into run queue and 
 	if (first_run) {
+		first_run = 0;
 
-		// allocate space for the queue and the queue node
+		/*SETUP FOR THE QUEUE START*/
 		myQueue = (struct Queue *)malloc(sizeof(struct Queue));
-		enqueue(qn);
-
-		// Set up the context and raise an error if needed
 		if (getcontext(&sched_cctx) < 0){
 			perror("getcontext");
 			exit(1);
 		}
 
-		// Set up the scheduler context
 		sched_cctx.uc_link=NULL;
 		sched_cctx.uc_stack.ss_sp=malloc(STACK_SIZE);
 		sched_cctx.uc_stack.ss_size=STACK_SIZE;
 		sched_cctx.uc_stack.ss_flags=0;
-
 		makecontext(&sched_cctx,(void *)&schedule,0);
-		
-		// LOGIC TO SETUP THE SCHEDULER QUEUE HERE and add the thread from before
-		first_run = 0;
+		/*SETUP FOR THE QUEUE END*/
 
-		// TODO Run the scheduler here
-		setcontext(&sched_cctx);
-	} else{
-		enqueue(qn);
+		/*SETUP FOR THE MAIN THREAD START*/
+		main_thread = (struct QueueNode *)malloc(sizeof(struct QueueNode));
+		struct TCB * mainTCB = (struct TCB *) malloc(sizeof(struct TCB));
+		main_thread->myTCB = mainTCB;
+		main_thread->next = NULL;
+		mainTCB->thread_id = (worker_t)0; // 0 reserved for the main context
+
+		mainTCB->stack = malloc(STACK_SIZE);
+		if (mainTCB->stack == NULL){
+			perror("Failed to allocate stack");
+			exit(1);
+		}
+		mainTCB->cctx.uc_link=NULL;
+		mainTCB->cctx.uc_stack.ss_sp=mainTCB->stack;
+		mainTCB->cctx.uc_stack.ss_size=STACK_SIZE;
+		mainTCB->cctx.uc_stack.ss_flags=0;
+		/*SETUP FOR THE MAIN THREAD END*/
+		//TODO start timer somewhere
+	}else {
+		// dequeue the main thread from running again anf again
+		dequeue();
 	}
-	
-    return 0;
+
+	enqueue(qn);
+	enqueue(main_thread);
+	swapcontext(&main_thread->myTCB->cctx, &sched_cctx);
+	puts("Back in main thread");
+	return 0;
 };
 
 /* give CPU possession to other user-level worker threads voluntarily */
@@ -272,7 +298,9 @@ void worker_exit(void *value_ptr) {
 	// create a new finished node and enqueue
 	struct FinishedNode* finished_node = (struct FinishedNode*)malloc(sizeof(struct FinishedNode));
 	finished_node->thread_id = thread_id;
+	printf("Deallocated thread %d\n", thread_id);
 	enqueue_finished(finished_node);
+	setcontext(&sched_cctx);
 };
 
 
@@ -280,7 +308,7 @@ void worker_exit(void *value_ptr) {
 int worker_join(worker_t thread, void **value_ptr) {
 
 	// retrieve the chosen thread based on its ID
-	struct QueueNode* target_node = find_finished_node_by_thread_id(thread);
+	struct FinishedNode* target_node = find_finished_node_by_thread_id(thread);
 	
 	if (target_node == NULL){
 		// - wait for a specific thread to terminate

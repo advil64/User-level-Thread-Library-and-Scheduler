@@ -14,7 +14,7 @@
 
 // Define a simple thread function
 void* thread_function(void* arg) {
-    printf("Thread is running\n");
+    puts("Thread is running\n");
     // worker_yield(); // Yield to other threads
     // printf("Thread is running again\n");
     pthread_exit(NULL);
@@ -28,8 +28,9 @@ int main(int argc, char **argv) {
     // Create multiple worker threads
     worker_t thread1 = 1;
     worker_t thread2 = 2;
-    worker_create(&thread1, NULL, thread_function, NULL);
-    worker_create(&thread2, NULL, thread_function, NULL);
+    pthread_create(&thread1, NULL, &thread_function, NULL);
+    pthread_create(&thread2, NULL, &thread_function, NULL);
+    puts("Done for now :)");
 
     // // Start the threads
     // worker_join(thread1, NULL);
