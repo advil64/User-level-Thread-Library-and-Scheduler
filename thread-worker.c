@@ -170,13 +170,36 @@ static void schedule() {
 		//PSJF: if process with even shorter burst time arrives, the current process is removed
 		//      or premepted from execution and the shorter job is allocated the cpu cycle
 
-
-
-
-		
 		sched_psjf(); // psjf 
 	}
-	else if (sched == 2) {
+	else if (sched == 2) 
+	{
+
+
+		/*
+			MLFQ - Multi-level Feedback Queue
+
+			- maintain a queue structure will multiple levels
+			- the higher priority, the shorter time slice its corresponding level of runqueue will have
+
+			follow rules 1-5 of mlfq
+
+			Hints:
+
+			1) instead of a single run queue, you need multiple levels of rn queue
+				- RECOMMENDED: define number of levels as a macro in thread-worker.h
+			
+			2) When a worker thread has used up one "time quantum" move it to the next low runqueue
+			    - scheduler picks the tread at highest runqueue level
+
+			3) If thread yields before its time quantum expires --> stays in the current runqueue
+			     - cannot stay in the current runqueue forever
+
+			4) MLFQ with 1 queue is just round robin
+
+			5) Experiment with different alues of S
+		
+		*/
 		sched_mlfq();
 	}
 
