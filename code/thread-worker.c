@@ -63,7 +63,7 @@ void enqueue_psjf(struct QueueNode *newNode)
         struct QueueNode *prev = NULL;
         while (curr != NULL)
         {
-            if (newNode->myTCB->elapsed > curr->myTCB->elapsed)
+            if (newNode->myTCB->elapsed < curr->myTCB->elapsed)
             {
                 newNode->next = curr;
                 if (prev == NULL)
@@ -74,7 +74,9 @@ void enqueue_psjf(struct QueueNode *newNode)
                 {
                     prev->next = newNode;
                 }
+				break;
             }
+			prev = curr;
             curr = curr->next;
         }
         if (curr == NULL)
@@ -187,6 +189,7 @@ struct itimerval timer;
 
 void timer_handler(int signum) {
     printf("RING RING! The timer has gone off\n");
+    myQueue->running_thread->myTCB->thread_status = 0; // ready for execution
     enqueue_psjf(myQueue->running_thread);
     swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
 }
@@ -200,7 +203,8 @@ static void sched_psjf()
     // process having the smallest executing time is chosen for next execution
     while (!isEmpty(myQueue))
     {
-        struct QueueNode *shortestJob = myQueue->running_thread = dequeue();
+        struct QueueNode *shortestJob = myQueue->running_thread = dequeue(); // already starts at shortest job by default
+        myQueue->running_thread->myTCB->thread_status = 1; // thread is running
         setitimer(ITIMER_PROF, &timer, NULL);
         setcontext(&shortestJob->myTCB->cctx);
     }
@@ -209,7 +213,64 @@ static void sched_psjf()
 /* Preemptive MLFQ scheduling algorithm */
 static void sched_mlfq()
 {
-    puts("To be implemented");
+    puts("MLFQ beginning...");
+
+
+	//go through the priority levels (highest to lowest)
+
+
+	//check if the queue at this level is empty
+		//get thread at the front of the queue
+
+		//context switch if the thread has exceed the minimum quantum
+
+			//move the thread to the next lowest
+
+			//else increment the time counter and continue executing the thread
+
+	for(int currentLevel = LEVELS - 1; currentLevel >= 0; --currentLevel) 
+	{
+		puts("entering the initial loop");
+		//decrement the level first
+
+		//check if the queue at this level is not empty
+		if(!isEmpty(myQueue) && myQueue->front->myTCB->thread_p == currentLevel) 
+		{
+			//if its not empty....
+
+
+			//get the thread at the front of the queue
+			struct QueueNode* currentThread = myQueue->running_thread = myQueue->front;
+
+			// context switch if the thread has exceed the time quantum
+			if(currentThread->myTCB->elapsed >= QUANTUM) 
+			{
+				if(currentLevel == 0) 
+				{
+					currentThread->myTCB->thread_p = 0;
+				}
+				else 
+				{
+					currentThread->myTCB->thread_p = currentLevel - 1;
+				}
+
+				remove_node(currentThread);
+				enqueue_psjf(currentThread); // probably need to change this function for queue
+				//setcontext(&sched_cctx);
+			}
+			else 
+			{
+				//if the the thread has not exceed the time quantum
+				currentThread->myTCB->elapsed += 1;
+				setcontext(&currentThread->myTCB->cctx);
+				
+			}
+
+		}
+
+	}
+
+
 }
 
 static void schedule()
@@ -360,11 +421,15 @@ int worker_join(worker_t thread, void **value_ptr)
 
     if (target_node == NULL)
     {
-        // - wait for a specific thread to terminate
+        while(target_node != NULL){
+            target_node = find_finished_node_by_thread_id(thread);
+            printf("Waiting for a thread %d\n", thread);
+        }
     }
     else
-    {
-        // - de-allocate any dynamic memory created by the joining thread
+    {   
+        //remove the node from the finished nodes list
+        puts("Done with this job");
     }
 
     // YOUR CODE HERE

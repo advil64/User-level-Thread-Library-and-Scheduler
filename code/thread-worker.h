@@ -25,6 +25,7 @@
 
 #define STACK_SIZE SIGSTKSZ
 #define QUANTUM 10000 // 10 ms quantum
+#define LEVELS 4
 
 typedef uint worker_t;
 
@@ -35,7 +36,7 @@ typedef struct TCB {
 	ucontext_t cctx; // thread context
 	void *stack; // thread stack
 	uint thread_p; // thread priority
-    uint elapsed;
+    uint elapsed; // elapsed time 
 } tcb; 
 
 /* mutex struct definition */
