@@ -63,7 +63,7 @@ void enqueue_psjf(struct QueueNode *newNode)
         struct QueueNode *prev = NULL;
         while (curr != NULL)
         {
-            if (newNode->myTCB->elapsed < curr->myTCB->elapsed)
+            if (newNode->myTCB->elapsed > curr->myTCB->elapsed)
             {
                 newNode->next = curr;
                 if (prev == NULL)
