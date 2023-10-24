@@ -181,6 +181,17 @@ ucontext_t sched_cctx;
 // And here's one for the main context!
 struct QueueNode *main_thread;
 
+/*TIMER FUNCTIONS START HERE*/
+struct sigaction sa;
+struct itimerval timer;
+
+void timer_handler(int signum) {
+    printf("RING RING! The timer has gone off\n");
+    enqueue_psjf(myQueue->running_thread);
+    swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
+}
+/*TIMER FUNCTIONS END HERE*/
+
 /*SCHEDULER FUNCTIONS START HERE*/
 
 /* Pre-emptive Shortest Job First (POLICY_PSJF) scheduling algorithm */
@@ -190,6 +201,7 @@ static void sched_psjf()
     while (!isEmpty(myQueue))
     {
         struct QueueNode *shortestJob = myQueue->running_thread = dequeue();
+        setitimer(ITIMER_PROF, &timer, NULL);
         setcontext(&shortestJob->myTCB->cctx);
     }
 }
@@ -202,12 +214,11 @@ static void sched_mlfq()
 
 static void schedule()
 {
-
-#ifndef MLFQ
-    sched_psjf();
-#else
-    sched_mlfq();
-#endif
+    #ifndef MLFQ
+        sched_psjf();
+    #else
+        sched_mlfq();
+    #endif
 }
 
 /*SCHEDULER FUNCTIONS END HERE*/
@@ -286,7 +297,17 @@ int worker_create(worker_t *thread, pthread_attr_t *attr, void *(*function)(void
         mainTCB->cctx.uc_stack.ss_size = STACK_SIZE;
         mainTCB->cctx.uc_stack.ss_flags = 0;
         /*SETUP FOR THE MAIN THREAD END*/
-        // TODO start timer somewhere
+
+        /*SETUP THE TIMER START*/
+        memset (&sa, 0, sizeof (sa));
+        sa.sa_handler = &timer_handler;
+        sigaction (SIGPROF, &sa, NULL);
+        
+        timer.it_interval.tv_usec = 0;
+        timer.it_interval.tv_sec = 0;
+        timer.it_value.tv_usec = 0;
+	    timer.it_value.tv_sec = 1;
+        /*SETUP THE TIMER END*/
     }
 
     enqueue_psjf(qn);
@@ -316,9 +337,6 @@ void worker_exit(void *value_ptr)
     // - de-allocate any dynamic memory created when starting this thread
     struct QueueNode *temp = myQueue->running_thread;
     worker_t thread_id = temp->myTCB->thread_id;
-
-    // modify the queue to ignore temp
-    remove_node(temp);
 
     // free all of temp's allocated memory
     free(temp->myTCB->stack);

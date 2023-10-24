@@ -15,6 +15,8 @@
 /* include lib header files that you need here: */
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
+#include <string.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
