@@ -50,6 +50,11 @@ int isEmpty()
     return (myQueue->front == NULL);
 }
 
+// TODO: Need to put this in the thread-worker.h
+int isEmptyMultiQueue(struct Queue *currentQueue) {
+    return (currentQueue->front == NULL);
+}
+
 void enqueue_mutex(struct QueueNode *newNode) {
 
     newNode->next = NULL;
@@ -290,66 +295,184 @@ static void sched_psjf()
     }
 }
 
+
+
+
+
+/* FIGURING OUT MLFQ IMPLEMENTATION FROM HERE */
+
+struct Queue* createQueue() {
+    struct Queue* queue = (struct Queue*)malloc(sizeof(struct Queue));
+    puts("creating mlfq queues");
+    if (queue == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+    queue->front = NULL;
+    queue->rear = NULL;
+    return queue;
+}
+
+void enqueue(struct Queue* queue, struct QueueNode new_node) 
+{
+    // Allocate memory for the new node
+    puts("enqued_mlfq");
+    struct QueueNode* newNode = (struct QueueNode*)malloc(sizeof(struct QueueNode));
+    if (newNode == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+    *newNode = new_node;
+    newNode->next = NULL;
+
+    // If the queue is empty, set the new node as both front and rear
+    if (queue->rear == NULL) {
+        queue->front = newNode;
+        queue->rear = newNode;
+    } else {
+        // Otherwise, add the new node to the rear
+        queue->rear->next = newNode;
+        queue->rear = newNode;
+    }
+}
+
+struct QueueNode dequeue(struct Queue* queue) {
+    // Check if the queue is empty
+    puts("dequuing mlfq ");
+    if (queue->front == NULL) {
+        // You might want to handle this case based on your requirements.
+        // For now, return a dummy node with NULL pointer and handle it accordingly in your logic.
+        struct QueueNode dummy_node = { .myTCB = NULL, .next = NULL };
+        return dummy_node;
+    }
+
+    // Get the front node and move front pointer to the next node
+    struct QueueNode* temp = queue->front;
+    queue->front = queue->front->next;
+
+    // If the queue becomes empty, update the rear pointer to NULL
+    if (queue->front == NULL) {
+        queue->rear = NULL;
+    }
+
+    // Store the dequeued node for further processing if needed
+    struct QueueNode dequeued_node = *temp;
+
+    // Free the memory of the dequeued node
+    free(temp);
+
+    return dequeued_node;
+}
+
 /* Preemptive MLFQ scheduling algorithm */
+int time_quantum[LEVELS] = {8, 6, 4, 2}; // testing levels with different time quantums (Level 0 to Level 3)
+
 static void sched_mlfq()
 {
     // TODO create an array with priorities and different queues, this isn't a great implementation
     puts("MLFQ beginning...");
 
+   
 
-	// //go through the priority levels (highest to lowest)
+    /*
+        LEVEL 3
+        LEVEL 2
+        LEVEL 1
+        LEVEL 0
+    */
 
-
-	// //check if the queue at this level is empty
-	// 	//get thread at the front of the queue
-
-	// 	//context switch if the thread has exceed the minimum quantum
-
-	// 		//move the thread to the next lowest
-
-	// 		//else increment the time counter and continue executing the thread
-
-	// for(int currentLevel = LEVELS - 1; currentLevel >= 0; --currentLevel) 
-	// {
-	// 	puts("entering the initial loop");
-	// 	//decrement the level first
-
-	// 	//check if the queue at this level is not empty
-	// 	if(!isEmpty(myQueue) && myQueue->front->myTCB->thread_p == currentLevel) 
-	// 	{
-	// 		//if its not empty....
+    // Create an array of queues for MLFQ
+    struct Queue* mlfq_queues[LEVELS];
+    for (int i = 0; i < LEVELS; ++i) 
+    {
+        mlfq_queues[i] = createQueue();
+    }
 
 
-	// 		//get the thread at the front of the queue
-	// 		struct QueueNode* currentThread = myQueue->running_thread = myQueue->front;
+    // put threads from myQueue into MLFQ queues based on their priority levels
+    while (!isEmpty(myQueue)) {
+        struct QueueNode* currentThread = dequeue_psjf();
 
-	// 		// context switch if the thread has exceed the time quantum
-	// 		if(currentThread->myTCB->elapsed >= QUANTUM) 
-	// 		{
-	// 			if(currentLevel == 0) 
-	// 			{
-	// 				currentThread->myTCB->thread_p = 0;
-	// 			}
-	// 			else 
-	// 			{
-	// 				currentThread->myTCB->thread_p = currentLevel - 1;
-	// 			}
+        // Determine the MLFQ level based on priority
+        int mlfq_level = currentThread->myTCB->thread_p;
+        if (mlfq_level >= LEVELS) {
+            mlfq_level = LEVELS - 1; // Cap the level to the maximum available
+        }
+        printf("initial mlfq_level %d \n" , mlfq_level);
 
-	// 			remove_node(currentThread);
-	// 			enqueue_psjf(currentThread); // probably need to change this function for queue
-	// 			//setcontext(&sched_cctx);
-	// 		}
-	// 		else 
-	// 		{
-	// 			//if the the thread has not exceed the time quantum
-	// 			currentThread->myTCB->elapsed += 1;
-	// 			setcontext(&currentThread->myTCB->cctx);
-				
-	// 		}
+        // Enqueue the thread into the appropriate MLFQ queue
+        enqueue(mlfq_queues[mlfq_level], *currentThread);
+    }
 
-	// 	}
+    // DEBUGGING: After enqueueing threads into MLFQ queues
+    for (int i = 0; i < LEVELS; ++i) {
+        printf("MLFQ Level %d Queue: ", i);
+        struct QueueNode *currentNode = mlfq_queues[i]->front;
+        while (currentNode != NULL) {
+            printf("%d ", currentNode->myTCB->thread_id);
+            currentNode = currentNode->next;
+        }
+        printf("\n");
+    }
 
-	// }
+    // Execute threads in MLFQ queues
+    for (int i = 0; i < LEVELS; ++i) {
+       
+        //!isEmpty(mlfq_queues[i]
+        while (!isEmptyMultiQueue(mlfq_queues[i])) {
+            printf("not empty\n");
+            struct QueueNode currentThread = dequeue(mlfq_queues[i]); // Dequeue the thread
+
+            // Context switch if the thread has exceeded the time quantum
+            if (currentThread.myTCB->elapsed >= time_quantum[i]) 
+            {
+                //move the thread to lower level (unless its already at the lowest)
+                if (i < LEVELS - 1) {
+                    printf("mlfq: process is going to a lower priority queue");
+                    currentThread.myTCB->thread_p = i + 1;
+                }
+                printf("mlfq: process is being enqueued in new priority queue");
+                enqueue(mlfq_queues[currentThread.myTCB->thread_p], currentThread);
+            } else {
+                // If the thread has not exceeded the time quantum, let it continue executing
+                printf("mlfq: process will continue on this level\n");
+                currentThread.myTCB->elapsed += 1;
+                swapcontext(&sched_cctx, &currentThread.myTCB->cctx);
+            }
+        }
+
+        printf("finished executing the threads at this level\n");
+    }
+
+    /*
+    for (int currentLevel = LEVELS - 1; currentLevel >= 0; --currentLevel) {
+        
+         int current_quantum = time_quantum[currentLevel];
+        if (!isEmpty(myQueue) && myQueue->front->myTCB->thread_p == currentLevel)
+         {
+            struct QueueNode *currentThread = myQueue->running_thread = myQueue->front;
+
+            // Context switch if the thread has exceeded the time quantum
+            if (currentThread->myTCB->elapsed >= current_quantum) {
+                if (currentLevel == 0) {
+                    currentThread->myTCB->thread_p = 0;
+                } else {
+                    currentThread->myTCB->thread_p = currentLevel - 1;
+                }
+
+                remove_node(currentThread);
+                enqueue_psjf(currentThread);
+            } else {
+                // If the thread has not exceeded the time quantum, let it continue executing
+                currentThread->myTCB->elapsed += 1;
+                swapcontext(&sched_cctx, &currentThread->myTCB->cctx);
+            }
+        }
+    }
+    */
+
+
+    puts("done with mlfq");
 
 
 }
@@ -373,6 +496,10 @@ int worker_create(worker_t *thread, pthread_attr_t *attr, void *(*function)(void
     struct TCB *myTCB = (struct TCB *)malloc(sizeof(struct TCB));
     myTCB->thread_id = *thread;
     myTCB->elapsed = 0;
+
+    //set the tcb level to the highest priority level whenever a worker is first created
+    //if the process hits a time quantum go to a lower level
+    myTCB->thread_p = 0;
 
     // - allocate space of stack for this thread to run
     myTCB->stack = malloc(STACK_SIZE);
