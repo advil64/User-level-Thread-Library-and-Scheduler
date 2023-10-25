@@ -22,7 +22,8 @@ struct QueueNode
     struct QueueNode *next;
 };
 
-struct MutexQueue{
+struct MutexQueue
+{
     struct QueueNode *front;
     struct QueueNode *rear;
 };
@@ -51,19 +52,24 @@ int isEmpty()
 }
 
 // TODO: Need to put this in the thread-worker.h
-int isEmptyMultiQueue(struct Queue *currentQueue) {
+int isEmptyMultiQueue(struct Queue *currentQueue)
+{
     return (currentQueue->front == NULL);
 }
 
-void enqueue_mutex(struct QueueNode *newNode) {
+void enqueue_mutex(struct QueueNode *newNode)
+{
 
     newNode->next = NULL;
 
     // If the queue is empty, set the new node as both front and rear
-    if (mutexQueue->rear == NULL) {
+    if (mutexQueue->rear == NULL)
+    {
         mutexQueue->front = newNode;
         mutexQueue->rear = newNode;
-    } else {
+    }
+    else
+    {
         // Otherwise, add the new node to the rear
         mutexQueue->rear->next = newNode;
         mutexQueue->rear = newNode;
@@ -114,9 +120,9 @@ void enqueue_psjf(struct QueueNode *newNode)
                 {
                     prev->next = newNode;
                 }
-				break;
+                break;
             }
-			prev = curr;
+            prev = curr;
             curr = curr->next;
         }
         if (curr == NULL)
@@ -127,6 +133,55 @@ void enqueue_psjf(struct QueueNode *newNode)
         }
     }
     puts("Node enqueued psjf style");
+}
+
+void enqueue_mlfq(struct QueueNode *newNode)
+{
+    puts("enqued_mlfq");
+    newNode->next = NULL;
+
+    if (isEmpty(myQueue))
+    {
+        myQueue->front = myQueue->rear = newNode;
+    }
+    else
+    {
+        struct QueueNode *curr = myQueue->front;
+        struct QueueNode *prev = NULL;
+        while (curr != NULL)
+        {
+            if (newNode->myTCB->thread_p < curr->myTCB->thread_p)
+            {
+                newNode->next = curr;
+                if (prev == NULL)
+                {
+                    myQueue->front = newNode;
+                }
+                else
+                {
+                    prev->next = newNode;
+                }
+                break;
+            }
+            prev = curr;
+            curr = curr->next;
+        }
+        if (curr == NULL)
+        {
+            myQueue->rear->next = newNode;
+            myQueue->rear = newNode;
+            newNode->next = NULL;
+        }
+    }
+}
+
+static void enqueue_queue_node(struct QueueNode *newNode)
+{
+#ifndef MLFQ
+    enqueue_psjf(newNode);
+#else
+    enqueue_mlfq(newNode);
+#endif
 }
 
 // Function to add an element to the rear of the finished threads queue
@@ -146,7 +201,7 @@ void enqueue_finished(struct FinishedNode *newNode)
 }
 
 // Function to remove an element from the front of the queue
-struct QueueNode *dequeue_psjf()
+struct QueueNode *dequeue_queue_node()
 {
     if (isEmpty(myQueue))
     {
@@ -176,10 +231,10 @@ struct FinishedNode *find_finished_node_by_thread_id(worker_t target_thread_id)
     return NULL; // Target thread ID not found in the queue
 };
 
-void remove_finished_node_from_queue(struct FinishedNode* target_thread)
+void remove_finished_node_from_queue(struct FinishedNode *target_thread)
 {
-    struct FinishedNode* previous = NULL;
-    struct FinishedNode* current = myQueue->finished_threads;
+    struct FinishedNode *previous = NULL;
+    struct FinishedNode *current = myQueue->finished_threads;
 
     while (current != NULL)
     {
@@ -204,7 +259,6 @@ void remove_finished_node_from_queue(struct FinishedNode* target_thread)
 
     return; // Target thread ID not found in the queue
 }
-
 
 // Function to remove a specific node from the queue
 void remove_node(struct QueueNode *targetNode)
@@ -257,10 +311,11 @@ struct QueueNode *main_thread;
 struct sigaction sa;
 struct itimerval timer;
 
-void timer_handler(int signum) {
+void timer_handler(int signum)
+{
     printf("RING RING! The timer has gone off\n");
     myQueue->running_thread->myTCB->thread_status = 0; // ready for execution
-    enqueue_psjf(myQueue->running_thread);
+    enqueue_queue_node(myQueue->running_thread);
     tot_cntx_switches++;
     swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
 }
@@ -269,7 +324,8 @@ void timer_handler(int signum) {
 /*SCHEDULER FUNCTIONS START HERE*/
 
 // Function to get the current time
-void get_current_time(struct timespec* ts) {
+void get_current_time(struct timespec *ts)
+{
     clock_gettime(CLOCK_MONOTONIC, ts);
 }
 
@@ -281,209 +337,56 @@ static void sched_psjf()
     // process having the smallest executing time is chosen for next execution
     while (!isEmpty(myQueue))
     {
-        struct QueueNode *shortestJob = myQueue->running_thread = dequeue_psjf(); // already starts at shortest job by default
-        myQueue->running_thread->myTCB->thread_status = 1; // thread is running
+        struct QueueNode *shortestJob = myQueue->running_thread = dequeue_queue_node(); // already starts at shortest job by default
+        myQueue->running_thread->myTCB->thread_status = 1;                              // thread is running
         setitimer(ITIMER_PROF, &timer, NULL);
         tot_cntx_switches++;
         start = clock(); // Get the start time
         swapcontext(&sched_cctx, &shortestJob->myTCB->cctx);
         end = clock(); // Get the end time
         cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-        if (myQueue->running_thread != NULL){
+        if (myQueue->running_thread != NULL)
+        {
             myQueue->running_thread->myTCB->elapsed += cpu_time_used;
         }
     }
 }
 
-
-
-
-
-/* FIGURING OUT MLFQ IMPLEMENTATION FROM HERE */
-
-struct Queue* createQueue() {
-    struct Queue* queue = (struct Queue*)malloc(sizeof(struct Queue));
-    puts("creating mlfq queues");
-    if (queue == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
-    queue->front = NULL;
-    queue->rear = NULL;
-    return queue;
-}
-
-void enqueue(struct Queue* queue, struct QueueNode new_node) 
-{
-    // Allocate memory for the new node
-    puts("enqued_mlfq");
-    struct QueueNode* newNode = (struct QueueNode*)malloc(sizeof(struct QueueNode));
-    if (newNode == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
-    *newNode = new_node;
-    newNode->next = NULL;
-
-    // If the queue is empty, set the new node as both front and rear
-    if (queue->rear == NULL) {
-        queue->front = newNode;
-        queue->rear = newNode;
-    } else {
-        // Otherwise, add the new node to the rear
-        queue->rear->next = newNode;
-        queue->rear = newNode;
-    }
-}
-
-struct QueueNode dequeue(struct Queue* queue) {
-    // Check if the queue is empty
-    puts("dequuing mlfq ");
-    if (queue->front == NULL) {
-        // You might want to handle this case based on your requirements.
-        // For now, return a dummy node with NULL pointer and handle it accordingly in your logic.
-        struct QueueNode dummy_node = { .myTCB = NULL, .next = NULL };
-        return dummy_node;
-    }
-
-    // Get the front node and move front pointer to the next node
-    struct QueueNode* temp = queue->front;
-    queue->front = queue->front->next;
-
-    // If the queue becomes empty, update the rear pointer to NULL
-    if (queue->front == NULL) {
-        queue->rear = NULL;
-    }
-
-    // Store the dequeued node for further processing if needed
-    struct QueueNode dequeued_node = *temp;
-
-    // Free the memory of the dequeued node
-    free(temp);
-
-    return dequeued_node;
-}
-
-/* Preemptive MLFQ scheduling algorithm */
-int time_quantum[LEVELS] = {8, 6, 4, 2}; // testing levels with different time quantums (Level 0 to Level 3)
+int time_quantum[LEVELS] = {0.5, 6, 4, 2}; // testing levels with different
 
 static void sched_mlfq()
 {
-    // TODO create an array with priorities and different queues, this isn't a great implementation
-    puts("MLFQ beginning...");
-
-   
-
-    /*
-        LEVEL 3
-        LEVEL 2
-        LEVEL 1
-        LEVEL 0
-    */
-
-    // Create an array of queues for MLFQ
-    struct Queue* mlfq_queues[LEVELS];
-    for (int i = 0; i < LEVELS; ++i) 
+    clock_t start, end;
+    double cpu_time_used;
+    // process having the smallest executing time is chosen for next execution
+    while (!isEmpty(myQueue))
     {
-        mlfq_queues[i] = createQueue();
-    }
-
-
-    // put threads from myQueue into MLFQ queues based on their priority levels
-    while (!isEmpty(myQueue)) {
-        struct QueueNode* currentThread = dequeue_psjf();
-
-        // Determine the MLFQ level based on priority
-        int mlfq_level = currentThread->myTCB->thread_p;
-        if (mlfq_level >= LEVELS) {
-            mlfq_level = LEVELS - 1; // Cap the level to the maximum available
-        }
-        printf("initial mlfq_level %d \n" , mlfq_level);
-
-        // Enqueue the thread into the appropriate MLFQ queue
-        enqueue(mlfq_queues[mlfq_level], *currentThread);
-    }
-
-    // DEBUGGING: After enqueueing threads into MLFQ queues
-    for (int i = 0; i < LEVELS; ++i) {
-        printf("MLFQ Level %d Queue: ", i);
-        struct QueueNode *currentNode = mlfq_queues[i]->front;
-        while (currentNode != NULL) {
-            printf("%d ", currentNode->myTCB->thread_id);
-            currentNode = currentNode->next;
-        }
-        printf("\n");
-    }
-
-    // Execute threads in MLFQ queues
-    for (int i = 0; i < LEVELS; ++i) {
-       
-        //!isEmpty(mlfq_queues[i]
-        while (!isEmptyMultiQueue(mlfq_queues[i])) {
-            printf("not empty\n");
-            struct QueueNode currentThread = dequeue(mlfq_queues[i]); // Dequeue the thread
-
-            // Context switch if the thread has exceeded the time quantum
-            if (currentThread.myTCB->elapsed >= time_quantum[i]) 
+        struct QueueNode *mostImportant = myQueue->running_thread = dequeue_queue_node(); // already starts at shortest job by default
+        myQueue->running_thread->myTCB->thread_status = 1;                                // thread is running
+        tot_cntx_switches++;
+        setitimer(ITIMER_PROF, &timer, NULL);
+        start = clock(); // Get the start time
+        swapcontext(&sched_cctx, &mostImportant->myTCB->cctx);
+        end = clock(); // Get the end time
+        cpu_time_used = (((double)(end - start)) / CLOCKS_PER_SEC);
+        if (myQueue->running_thread != NULL)
+        {
+            myQueue->running_thread->myTCB->elapsed += cpu_time_used;
+            if (time_quantum[myQueue->running_thread->myTCB->thread_p] < myQueue->running_thread->myTCB->elapsed & myQueue->running_thread->myTCB->thread_p < 3)
             {
-                //move the thread to lower level (unless its already at the lowest)
-                if (i < LEVELS - 1) {
-                    printf("mlfq: process is going to a lower priority queue");
-                    currentThread.myTCB->thread_p = i + 1;
-                }
-                printf("mlfq: process is being enqueued in new priority queue");
-                enqueue(mlfq_queues[currentThread.myTCB->thread_p], currentThread);
-            } else {
-                // If the thread has not exceeded the time quantum, let it continue executing
-                printf("mlfq: process will continue on this level\n");
-                currentThread.myTCB->elapsed += 1;
-                swapcontext(&sched_cctx, &currentThread.myTCB->cctx);
-            }
-        }
-
-        printf("finished executing the threads at this level\n");
-    }
-
-    /*
-    for (int currentLevel = LEVELS - 1; currentLevel >= 0; --currentLevel) {
-        
-         int current_quantum = time_quantum[currentLevel];
-        if (!isEmpty(myQueue) && myQueue->front->myTCB->thread_p == currentLevel)
-         {
-            struct QueueNode *currentThread = myQueue->running_thread = myQueue->front;
-
-            // Context switch if the thread has exceeded the time quantum
-            if (currentThread->myTCB->elapsed >= current_quantum) {
-                if (currentLevel == 0) {
-                    currentThread->myTCB->thread_p = 0;
-                } else {
-                    currentThread->myTCB->thread_p = currentLevel - 1;
-                }
-
-                remove_node(currentThread);
-                enqueue_psjf(currentThread);
-            } else {
-                // If the thread has not exceeded the time quantum, let it continue executing
-                currentThread->myTCB->elapsed += 1;
-                swapcontext(&sched_cctx, &currentThread->myTCB->cctx);
+                myQueue->running_thread->myTCB->thread_p++;
             }
         }
     }
-    */
-
-
-    puts("done with mlfq");
-
-
 }
 
 static void schedule()
 {
-    #ifndef MLFQ
-        sched_psjf();
-    #else
-        sched_mlfq();
-    #endif
+#ifndef MLFQ
+    sched_psjf();
+#else
+    sched_mlfq();
+#endif
 }
 
 /*SCHEDULER FUNCTIONS END HERE*/
@@ -497,8 +400,8 @@ int worker_create(worker_t *thread, pthread_attr_t *attr, void *(*function)(void
     myTCB->thread_id = *thread;
     myTCB->elapsed = 0;
 
-    //set the tcb level to the highest priority level whenever a worker is first created
-    //if the process hits a time quantum go to a lower level
+    // set the tcb level to the highest priority level whenever a worker is first created
+    // if the process hits a time quantum go to a lower level
     myTCB->thread_p = 0;
 
     // - allocate space of stack for this thread to run
@@ -569,19 +472,19 @@ int worker_create(worker_t *thread, pthread_attr_t *attr, void *(*function)(void
         /*SETUP FOR THE MAIN THREAD END*/
 
         /*SETUP THE TIMER START*/
-        memset (&sa, 0, sizeof (sa));
+        memset(&sa, 0, sizeof(sa));
         sa.sa_handler = &timer_handler;
-        sigaction (SIGPROF, &sa, NULL);
-        
+        sigaction(SIGPROF, &sa, NULL);
+
         timer.it_interval.tv_usec = 0;
         timer.it_interval.tv_sec = 0;
         timer.it_value.tv_usec = 0;
-	    timer.it_value.tv_sec = 1;
+        timer.it_value.tv_sec = 1;
         /*SETUP THE TIMER END*/
     }
 
-    enqueue_psjf(qn);
-    enqueue_psjf(main_thread);
+    enqueue_queue_node(qn);
+    enqueue_queue_node(main_thread);
     swapcontext(&main_thread->myTCB->cctx, &sched_cctx);
     puts("Back in main thread");
     return 0;
@@ -595,7 +498,7 @@ int worker_yield()
     myQueue->running_thread->myTCB->thread_status = 0;
     // - save context of this thread to its thread control block
     // - switch from thread context to scheduler context
-    enqueue_psjf(myQueue->running_thread);
+    enqueue_queue_node(myQueue->running_thread);
     swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
 
     return 0;
@@ -631,13 +534,14 @@ int worker_join(worker_t thread, void **value_ptr)
 
     if (target_node == NULL)
     {
-        while(target_node == NULL){
+        while (target_node == NULL)
+        {
             target_node = find_finished_node_by_thread_id(thread);
             // printf("Waiting for a thread %d\n", thread);
         }
     }
     else
-    {   
+    {
         remove_finished_node_from_queue(target_node);
         free(target_node);
         puts("Done with this job");
@@ -661,7 +565,8 @@ int worker_mutex_init(worker_mutex_t *mutex, const pthread_mutexattr_t *mutexatt
 int worker_mutex_lock(worker_mutex_t *mutex)
 {
     // - use the built-in test-and-set atomic function to test the mutex
-    while(__sync_lock_test_and_set(&mutex->is_locked, 1)){
+    while (__sync_lock_test_and_set(&mutex->is_locked, 1))
+    {
         enqueue_mutex(myQueue->running_thread);
         swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
     }
@@ -681,10 +586,13 @@ int worker_mutex_unlock(worker_mutex_t *mutex)
     // so that they could compete for mutex later.
     __sync_lock_release(&mutex->is_locked);
     struct QueueNode *nextMutexJob = dequeue_mutex();
-    if(nextMutexJob == NULL){
+    if (nextMutexJob == NULL)
+    {
         return 0;
-    } else{
-        enqueue_psjf(nextMutexJob);
+    }
+    else
+    {
+        enqueue_queue_node(nextMutexJob);
     }
     // YOUR CODE HERE
     return 0;
