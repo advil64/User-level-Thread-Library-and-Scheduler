@@ -22,6 +22,11 @@ struct QueueNode
     struct QueueNode *next;
 };
 
+struct MutexQueue{
+    struct QueueNode *front;
+    struct QueueNode *rear;
+};
+
 struct FinishedNode
 {
     worker_t thread_id;
@@ -37,6 +42,7 @@ struct Queue
 };
 
 struct Queue *myQueue;
+struct MutexQueue *mutexQueue;
 
 // Function to check if the queue is empty
 int isEmpty()
@@ -44,7 +50,36 @@ int isEmpty()
     return (myQueue->front == NULL);
 }
 
-// Function to add an element to the rear of the queue
+void enqueue_mutex(struct QueueNode *newNode) {
+
+    newNode->next = NULL;
+
+    // If the queue is empty, set the new node as both front and rear
+    if (mutexQueue->rear == NULL) {
+        mutexQueue->front = newNode;
+        mutexQueue->rear = newNode;
+    } else {
+        // Otherwise, add the new node to the rear
+        mutexQueue->rear->next = newNode;
+        mutexQueue->rear = newNode;
+    }
+}
+
+struct QueueNode *dequeue_mutex()
+{
+    if (mutexQueue->front == NULL)
+    {
+        return NULL;
+    }
+
+    struct QueueNode *temp = mutexQueue->front;
+    mutexQueue->front = mutexQueue->front->next;
+    puts("Mutex dequeued");
+    return temp;
+}
+
+// Adds a queue node at the point where its elapsed time is less than the next elapsed time
+// IE it adds the node in elapsed time order from least elapsed to most elapsed
 void enqueue_psjf(struct QueueNode *newNode)
 {
     if (!newNode)
@@ -89,7 +124,7 @@ void enqueue_psjf(struct QueueNode *newNode)
     puts("Node enqueued psjf style");
 }
 
-// Function to add an element to the rear of the queue
+// Function to add an element to the rear of the finished threads queue
 void enqueue_finished(struct FinishedNode *newNode)
 {
     if (myQueue->finished_threads == NULL)
@@ -106,7 +141,7 @@ void enqueue_finished(struct FinishedNode *newNode)
 }
 
 // Function to remove an element from the front of the queue
-struct QueueNode *dequeue()
+struct QueueNode *dequeue_psjf()
 {
     if (isEmpty(myQueue))
     {
@@ -135,6 +170,36 @@ struct FinishedNode *find_finished_node_by_thread_id(worker_t target_thread_id)
 
     return NULL; // Target thread ID not found in the queue
 };
+
+void remove_finished_node_from_queue(struct FinishedNode* target_thread)
+{
+    struct FinishedNode* previous = NULL;
+    struct FinishedNode* current = myQueue->finished_threads;
+
+    while (current != NULL)
+    {
+        if (current == target_thread)
+        {
+            // Found the node with the target thread ID, remove it
+            if (previous != NULL)
+            {
+                previous->next = current->next; // Update the next pointer of the previous node
+            }
+            else
+            {
+                myQueue->finished_threads = current->next; // Update the head of the queue
+            }
+
+            return; // Return the removed node
+        }
+
+        previous = current;
+        current = current->next;
+    }
+
+    return; // Target thread ID not found in the queue
+}
+
 
 // Function to remove a specific node from the queue
 void remove_node(struct QueueNode *targetNode)
@@ -191,84 +256,100 @@ void timer_handler(int signum) {
     printf("RING RING! The timer has gone off\n");
     myQueue->running_thread->myTCB->thread_status = 0; // ready for execution
     enqueue_psjf(myQueue->running_thread);
+    tot_cntx_switches++;
     swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
 }
 /*TIMER FUNCTIONS END HERE*/
 
 /*SCHEDULER FUNCTIONS START HERE*/
 
+// Function to get the current time
+void get_current_time(struct timespec* ts) {
+    clock_gettime(CLOCK_MONOTONIC, ts);
+}
+
 /* Pre-emptive Shortest Job First (POLICY_PSJF) scheduling algorithm */
 static void sched_psjf()
 {
+    clock_t start, end;
+    double cpu_time_used;
     // process having the smallest executing time is chosen for next execution
     while (!isEmpty(myQueue))
     {
-        struct QueueNode *shortestJob = myQueue->running_thread = dequeue(); // already starts at shortest job by default
+        struct QueueNode *shortestJob = myQueue->running_thread = dequeue_psjf(); // already starts at shortest job by default
         myQueue->running_thread->myTCB->thread_status = 1; // thread is running
         setitimer(ITIMER_PROF, &timer, NULL);
-        setcontext(&shortestJob->myTCB->cctx);
+        tot_cntx_switches++;
+        start = clock(); // Get the start time
+        swapcontext(&sched_cctx, &shortestJob->myTCB->cctx);
+        end = clock(); // Get the end time
+        cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+        if (myQueue->running_thread != NULL){
+            myQueue->running_thread->myTCB->elapsed += cpu_time_used;
+        }
     }
 }
 
 /* Preemptive MLFQ scheduling algorithm */
 static void sched_mlfq()
 {
+    // TODO create an array with priorities and different queues, this isn't a great implementation
     puts("MLFQ beginning...");
 
 
-	//go through the priority levels (highest to lowest)
+	// //go through the priority levels (highest to lowest)
 
 
-	//check if the queue at this level is empty
-		//get thread at the front of the queue
+	// //check if the queue at this level is empty
+	// 	//get thread at the front of the queue
 
-		//context switch if the thread has exceed the minimum quantum
+	// 	//context switch if the thread has exceed the minimum quantum
 
-			//move the thread to the next lowest
+	// 		//move the thread to the next lowest
 
-			//else increment the time counter and continue executing the thread
+	// 		//else increment the time counter and continue executing the thread
 
-	for(int currentLevel = LEVELS - 1; currentLevel >= 0; --currentLevel) 
-	{
-		puts("entering the initial loop");
-		//decrement the level first
+	// for(int currentLevel = LEVELS - 1; currentLevel >= 0; --currentLevel) 
+	// {
+	// 	puts("entering the initial loop");
+	// 	//decrement the level first
 
-		//check if the queue at this level is not empty
-		if(!isEmpty(myQueue) && myQueue->front->myTCB->thread_p == currentLevel) 
-		{
-			//if its not empty....
+	// 	//check if the queue at this level is not empty
+	// 	if(!isEmpty(myQueue) && myQueue->front->myTCB->thread_p == currentLevel) 
+	// 	{
+	// 		//if its not empty....
 
 
-			//get the thread at the front of the queue
-			struct QueueNode* currentThread = myQueue->running_thread = myQueue->front;
+	// 		//get the thread at the front of the queue
+	// 		struct QueueNode* currentThread = myQueue->running_thread = myQueue->front;
 
-			// context switch if the thread has exceed the time quantum
-			if(currentThread->myTCB->elapsed >= QUANTUM) 
-			{
-				if(currentLevel == 0) 
-				{
-					currentThread->myTCB->thread_p = 0;
-				}
-				else 
-				{
-					currentThread->myTCB->thread_p = currentLevel - 1;
-				}
+	// 		// context switch if the thread has exceed the time quantum
+	// 		if(currentThread->myTCB->elapsed >= QUANTUM) 
+	// 		{
+	// 			if(currentLevel == 0) 
+	// 			{
+	// 				currentThread->myTCB->thread_p = 0;
+	// 			}
+	// 			else 
+	// 			{
+	// 				currentThread->myTCB->thread_p = currentLevel - 1;
+	// 			}
 
-				remove_node(currentThread);
-				enqueue_psjf(currentThread); // probably need to change this function for queue
-				//setcontext(&sched_cctx);
-			}
-			else 
-			{
-				//if the the thread has not exceed the time quantum
-				currentThread->myTCB->elapsed += 1;
-				setcontext(&currentThread->myTCB->cctx);
+	// 			remove_node(currentThread);
+	// 			enqueue_psjf(currentThread); // probably need to change this function for queue
+	// 			//setcontext(&sched_cctx);
+	// 		}
+	// 		else 
+	// 		{
+	// 			//if the the thread has not exceed the time quantum
+	// 			currentThread->myTCB->elapsed += 1;
+	// 			setcontext(&currentThread->myTCB->cctx);
 				
-			}
+	// 		}
 
-		}
+	// 	}
 
-	}
+	// }
 
 
 }
@@ -291,6 +372,7 @@ int worker_create(worker_t *thread, pthread_attr_t *attr, void *(*function)(void
     // - create Thread Control Block (TCB)
     struct TCB *myTCB = (struct TCB *)malloc(sizeof(struct TCB));
     myTCB->thread_id = *thread;
+    myTCB->elapsed = 0;
 
     // - allocate space of stack for this thread to run
     myTCB->stack = malloc(STACK_SIZE);
@@ -383,11 +465,11 @@ int worker_yield()
 {
 
     // - change worker thread's state from Running to Ready
-    // myQueue->running_thread->myTCB->thread_status = 0;
+    myQueue->running_thread->myTCB->thread_status = 0;
     // - save context of this thread to its thread control block
     // - switch from thread context to scheduler context
-
-    // YOUR CODE HERE
+    enqueue_psjf(myQueue->running_thread);
+    swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
 
     return 0;
 };
@@ -403,6 +485,7 @@ void worker_exit(void *value_ptr)
     free(temp->myTCB->stack);
     free(temp->myTCB);
     free(temp);
+    myQueue->running_thread = NULL;
 
     // create a new finished node and enqueue
     struct FinishedNode *finished_node = (struct FinishedNode *)malloc(sizeof(struct FinishedNode));
@@ -421,18 +504,18 @@ int worker_join(worker_t thread, void **value_ptr)
 
     if (target_node == NULL)
     {
-        while(target_node != NULL){
+        while(target_node == NULL){
             target_node = find_finished_node_by_thread_id(thread);
-            printf("Waiting for a thread %d\n", thread);
+            // printf("Waiting for a thread %d\n", thread);
         }
     }
     else
     {   
-        //remove the node from the finished nodes list
+        remove_finished_node_from_queue(target_node);
+        free(target_node);
         puts("Done with this job");
     }
 
-    // YOUR CODE HERE
     return 0;
 };
 
@@ -440,7 +523,9 @@ int worker_join(worker_t thread, void **value_ptr)
 int worker_mutex_init(worker_mutex_t *mutex, const pthread_mutexattr_t *mutexattr)
 {
     //- initialize data structures for this mutex
-
+    mutexQueue = (struct MutexQueue *)malloc(sizeof(struct MutexQueue));
+    mutexQueue->front = NULL;
+    mutexQueue->rear = NULL;
     // YOUR CODE HERE
     return 0;
 };
@@ -448,8 +533,11 @@ int worker_mutex_init(worker_mutex_t *mutex, const pthread_mutexattr_t *mutexatt
 /* aquire the mutex lock */
 int worker_mutex_lock(worker_mutex_t *mutex)
 {
-
     // - use the built-in test-and-set atomic function to test the mutex
+    while(__sync_lock_test_and_set(&mutex->is_locked, 1)){
+        enqueue_mutex(myQueue->running_thread);
+        swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
+    }
     // - if the mutex is acquired successfully, enter the critical section
     // - if acquiring mutex fails, push current thread into block list and
     // context switch to the scheduler thread
@@ -464,7 +552,13 @@ int worker_mutex_unlock(worker_mutex_t *mutex)
     // - release mutex and make it available again.
     // - put threads in block list to run queue
     // so that they could compete for mutex later.
-
+    __sync_lock_release(&mutex->is_locked);
+    struct QueueNode *nextMutexJob = dequeue_mutex();
+    if(nextMutexJob == NULL){
+        return 0;
+    } else{
+        enqueue_psjf(nextMutexJob);
+    }
     // YOUR CODE HERE
     return 0;
 };
@@ -473,7 +567,7 @@ int worker_mutex_unlock(worker_mutex_t *mutex)
 int worker_mutex_destroy(worker_mutex_t *mutex)
 {
     // - de-allocate dynamic memory created in worker_mutex_init
-
+    free(mutexQueue);
     return 0;
 };
 

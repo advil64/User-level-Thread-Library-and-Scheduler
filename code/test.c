@@ -15,7 +15,7 @@
 // Define a simple thread function
 void* thread_function(void* arg) {
     puts("Thread is running\n");
-    while(1);
+    //while(1);
     puts("Thread is still running\n");
     // worker_yield(); // Yield to other threads
     // printf("Thread is running again\n");

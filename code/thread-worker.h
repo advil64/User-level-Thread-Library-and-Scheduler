@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <ucontext.h>
 #include <signal.h>
+#include <time.h>
+#include <stdatomic.h>
 
 #define STACK_SIZE SIGSTKSZ
 #define QUANTUM 10000 // 10 ms quantum
@@ -36,13 +38,13 @@ typedef struct TCB {
 	ucontext_t cctx; // thread context
 	void *stack; // thread stack
 	uint thread_p; // thread priority
-    uint elapsed; // elapsed time 
+    double elapsed; // elapsed time 
 } tcb; 
 
 /* mutex struct definition */
 typedef struct worker_mutex_t {
 	/* add something here */
-
+    int is_locked; // Indicates if the mutex is locked
 	// YOUR CODE HERE
 } worker_mutex_t;
 

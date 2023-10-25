@@ -9,7 +9,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/common/home/ac1771/Desktop/Operating Systems/Project_2/code/test",
+            "program": "/common/home/ac1771/Desktop/Operating Systems/Project_2/code/benchmarks/parallel_cal",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
