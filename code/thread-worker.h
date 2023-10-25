@@ -39,6 +39,8 @@ typedef struct TCB {
 	void *stack; // thread stack
 	uint thread_p; // thread priority
     double elapsed; // elapsed time 
+    clock_t response_start;
+    clock_t response_end;
 } tcb; 
 
 /* mutex struct definition */

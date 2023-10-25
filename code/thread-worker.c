@@ -13,6 +13,11 @@ double avg_turn_time = 0;
 double avg_resp_time = 0;
 uint first_run = 1;
 
+double total_time_taken;
+double total_response_time;
+int numCompletedThreads = 0;
+int numRespondedThreads = 0;
+
 /*QUEUE FUNCTIONS START HERE*/
 
 // Define a structure for the elements in the scheduler queue and finished queue
@@ -40,6 +45,7 @@ struct Queue
     struct QueueNode *rear;
     struct FinishedNode *finished_threads;
     struct QueueNode *running_thread;
+    double running_elapsed;
 };
 
 struct Queue *myQueue;
@@ -49,12 +55,6 @@ struct MutexQueue *mutexQueue;
 int isEmpty()
 {
     return (myQueue->front == NULL);
-}
-
-// TODO: Need to put this in the thread-worker.h
-int isEmptyMultiQueue(struct Queue *currentQueue)
-{
-    return (currentQueue->front == NULL);
 }
 
 void enqueue_mutex(struct QueueNode *newNode)
@@ -85,7 +85,6 @@ struct QueueNode *dequeue_mutex()
 
     struct QueueNode *temp = mutexQueue->front;
     mutexQueue->front = mutexQueue->front->next;
-    puts("Mutex dequeued");
     return temp;
 }
 
@@ -132,12 +131,10 @@ void enqueue_psjf(struct QueueNode *newNode)
             newNode->next = NULL;
         }
     }
-    puts("Node enqueued psjf style");
 }
 
 void enqueue_mlfq(struct QueueNode *newNode)
 {
-    puts("enqued_mlfq");
     newNode->next = NULL;
 
     if (isEmpty(myQueue))
@@ -196,8 +193,6 @@ void enqueue_finished(struct FinishedNode *newNode)
         newNode->next = myQueue->finished_threads;
         myQueue->finished_threads = newNode;
     }
-
-    puts("Finished node enqueued");
 }
 
 // Function to remove an element from the front of the queue
@@ -205,13 +200,11 @@ struct QueueNode *dequeue_queue_node()
 {
     if (isEmpty(myQueue))
     {
-        printf("Queue is empty\n");
         exit(1);
     }
 
     struct QueueNode *temp = myQueue->front;
     myQueue->front = myQueue->front->next;
-    puts("Node dequeued");
     return temp;
 }
 
@@ -313,7 +306,6 @@ struct itimerval timer;
 
 void timer_handler(int signum)
 {
-    printf("RING RING! The timer has gone off\n");
     myQueue->running_thread->myTCB->thread_status = 0; // ready for execution
     enqueue_queue_node(myQueue->running_thread);
     tot_cntx_switches++;
@@ -323,12 +315,6 @@ void timer_handler(int signum)
 
 /*SCHEDULER FUNCTIONS START HERE*/
 
-// Function to get the current time
-void get_current_time(struct timespec *ts)
-{
-    clock_gettime(CLOCK_MONOTONIC, ts);
-}
-
 /* Pre-emptive Shortest Job First (POLICY_PSJF) scheduling algorithm */
 static void sched_psjf()
 {
@@ -337,17 +323,31 @@ static void sched_psjf()
     // process having the smallest executing time is chosen for next execution
     while (!isEmpty(myQueue))
     {
+        myQueue->running_elapsed = 0;
         struct QueueNode *shortestJob = myQueue->running_thread = dequeue_queue_node(); // already starts at shortest job by default
+        if(shortestJob->myTCB->response_end == 0){
+            shortestJob->myTCB->response_end = clock();
+            total_response_time += ((double)(shortestJob->myTCB->response_end - shortestJob->myTCB->response_start)) / CLOCKS_PER_SEC;
+            numRespondedThreads++;
+            avg_resp_time = (total_response_time / (double)numRespondedThreads) * 100000;
+        }
         myQueue->running_thread->myTCB->thread_status = 1;                              // thread is running
         setitimer(ITIMER_PROF, &timer, NULL);
         tot_cntx_switches++;
         start = clock(); // Get the start time
+        tot_cntx_switches++;
         swapcontext(&sched_cctx, &shortestJob->myTCB->cctx);
         end = clock(); // Get the end time
         cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
         if (myQueue->running_thread != NULL)
         {
             myQueue->running_thread->myTCB->elapsed += cpu_time_used;
+        }
+        else
+        {
+            total_time_taken += (cpu_time_used + myQueue->running_elapsed);
+            numCompletedThreads++;
+            avg_turn_time = (total_time_taken / (double)numCompletedThreads) * 100000;
         }
     }
 }
@@ -362,10 +362,17 @@ static void sched_mlfq()
     while (!isEmpty(myQueue))
     {
         struct QueueNode *mostImportant = myQueue->running_thread = dequeue_queue_node(); // already starts at shortest job by default
+        if(mostImportant->myTCB->response_end == 0){
+            mostImportant->myTCB->response_end = clock();
+            total_response_time += ((double)(mostImportant->myTCB->response_end - mostImportant->myTCB->response_start)) / CLOCKS_PER_SEC;
+            numRespondedThreads++;
+            avg_resp_time = (total_response_time / (double)numRespondedThreads) * 100000;
+        }
         myQueue->running_thread->myTCB->thread_status = 1;                                // thread is running
         tot_cntx_switches++;
         setitimer(ITIMER_PROF, &timer, NULL);
         start = clock(); // Get the start time
+        tot_cntx_switches++;
         swapcontext(&sched_cctx, &mostImportant->myTCB->cctx);
         end = clock(); // Get the end time
         cpu_time_used = (((double)(end - start)) / CLOCKS_PER_SEC);
@@ -376,6 +383,13 @@ static void sched_mlfq()
             {
                 myQueue->running_thread->myTCB->thread_p++;
             }
+        }
+        else
+        {
+            // get the ending time here
+            total_time_taken += (cpu_time_used + myQueue->running_elapsed);
+            numCompletedThreads++;
+            avg_turn_time = (total_time_taken / (double)numCompletedThreads) * 1000000;
         }
     }
 }
@@ -484,9 +498,17 @@ int worker_create(worker_t *thread, pthread_attr_t *attr, void *(*function)(void
     }
 
     enqueue_queue_node(qn);
+    if (qn->myTCB->response_start == 0)
+    {
+        qn->myTCB->response_start = clock();
+    }
     enqueue_queue_node(main_thread);
+    if (main_thread->myTCB->response_start == 0)
+    {
+        qn->myTCB->response_start = clock();
+    }
+    tot_cntx_switches++;
     swapcontext(&main_thread->myTCB->cctx, &sched_cctx);
-    puts("Back in main thread");
     return 0;
 };
 
@@ -499,6 +521,7 @@ int worker_yield()
     // - save context of this thread to its thread control block
     // - switch from thread context to scheduler context
     enqueue_queue_node(myQueue->running_thread);
+    tot_cntx_switches++;
     swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
 
     return 0;
@@ -511,6 +534,8 @@ void worker_exit(void *value_ptr)
     struct QueueNode *temp = myQueue->running_thread;
     worker_t thread_id = temp->myTCB->thread_id;
 
+    myQueue->running_elapsed = temp->myTCB->elapsed;
+
     // free all of temp's allocated memory
     free(temp->myTCB->stack);
     free(temp->myTCB);
@@ -520,8 +545,8 @@ void worker_exit(void *value_ptr)
     // create a new finished node and enqueue
     struct FinishedNode *finished_node = (struct FinishedNode *)malloc(sizeof(struct FinishedNode));
     finished_node->thread_id = thread_id;
-    printf("Deallocated thread %d\n", thread_id);
     enqueue_finished(finished_node);
+    tot_cntx_switches++;
     setcontext(&sched_cctx);
 };
 
@@ -537,14 +562,12 @@ int worker_join(worker_t thread, void **value_ptr)
         while (target_node == NULL)
         {
             target_node = find_finished_node_by_thread_id(thread);
-            // printf("Waiting for a thread %d\n", thread);
         }
     }
     else
     {
         remove_finished_node_from_queue(target_node);
         free(target_node);
-        puts("Done with this job");
     }
 
     return 0;
@@ -568,6 +591,7 @@ int worker_mutex_lock(worker_mutex_t *mutex)
     while (__sync_lock_test_and_set(&mutex->is_locked, 1))
     {
         enqueue_mutex(myQueue->running_thread);
+        tot_cntx_switches++;
         swapcontext(&myQueue->running_thread->myTCB->cctx, &sched_cctx);
     }
     // - if the mutex is acquired successfully, enter the critical section
